@@ -9,7 +9,7 @@ number of x-ray fluorescence (XRF) photons at a given excitaiton energy and limi
 The following xraylib (XRL) functions are utilized in this code:
 
 Mass photoionization cross sections (cm^2/g)
-    CS_Photo (jump ratio-approximated total photoionization cross section)
+    CS_Photo (jump ratio-approximated total mass photoionization cross section)
     CS_Photo_Total (excitation-dependent total mass photoionization cross section)
     CS_Photo_Total_CP (excitation-dependent total mass photoionization cross section for compounds)
     CS_Photo_Partial [excitation-dependent subshell mass photoionization partial cross section (PCS)]
