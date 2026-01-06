@@ -27,11 +27,6 @@ Absorption edge and XRF transition parameters (energies are in keV)
     JumpFactor (absorption edge jump ratio)
     LineEnergy (XRF line energy)
     RadRate (XRF fractional yield/branching ratio)
-
-Chemistry (masses are in g)
-    AtomicWeight (elemental molar mass)
-    GetCompoundDataNISTByIndex (information on XRL-defined NIST compounds)
-    SymbolToAtomicNumber (symbol-to-atomic number conversion)
     
 #################################################################################
 
