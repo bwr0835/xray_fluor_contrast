@@ -1,7 +1,6 @@
 '''
-File: fluor_contrast_jump_pcs_final.py
+File: fluor_contrast_jump_pcs.py
 Author: B. Roter
-Date: December 10, 2025
 
 Using the xraylib (XRL) fundamental parameter database [1], this program calculates the minimum number of incident photons and radiation skin dose per pixel required to detect a user-defined
 number of x-ray fluorescence (XRF) photons at a given excitaiton energy and limit of detection. For the dose, the model protein assumed is H48.6C32.9N8.9O8.9S0.6 [2].
@@ -27,7 +26,12 @@ Absorption edge and XRF transition parameters (energies are in keV)
     JumpFactor (absorption edge jump ratio)
     LineEnergy (XRF line energy)
     RadRate (XRF fractional yield/branching ratio)
-    
+
+Chemistry
+    AtomicWeight (elemental molar mass in g/mol)
+    GetCompoundDataNISTByIndex (information on XRL-defined NIST compounds)
+    SymbolToAtomicNumber (symbol-to-atomic number conversion)
+
 #################################################################################
 
 References:
@@ -41,6 +45,32 @@ Appl. Opt. 28, 3397-3404 (1989).
 '''
 
 import numpy as np, xraylib as xrl, scipy.constants as cnsts
+
+from matplotlib import pyplot as plt
+
+def nist_compound_chem_form_dens(compound): # Get chemical formula, density info from XRL-defined NIST compounds
+    diatomic_elements = ['H', 'N', 'O', 'F', 'Cl', 'Br', 'I']
+    
+    compound_info = xrl.GetCompoundDataNISTByIndex(compound)
+
+    Z_compound = compound_info['Elements']
+    mass_frac = compound_info['massFractions']
+    density = compound_info['density']
+
+    compound = ''
+
+    for Z_idx, Z in enumerate(Z_compound):
+        element = xrl.AtomicNumberToSymbol(Z)
+
+        if element in diatomic_elements:
+            stoich_value = 2*mass_frac[Z_idx]
+        
+        else:
+            stoich_value = mass_frac[Z_idx]
+        
+        compound += (f'{element}{stoich_value}')
+
+    return compound, density
 
 def mass_photo_pcs_jump(Z, subshell, E0): # Jump ratio-approximated mass photoionization PCSes
     try:
@@ -382,25 +412,30 @@ def mass_photo_pcs_jump_with_ck_no_ck_constraints(Z, subshell, E0): # Modified j
 
 # Inputs
 
-E0_kev = np.linspace(4, 34, 151) # 200 eV spacing
-dE0 = E0_kev[1] - E0_kev[0]
-
+E0_kev = np.linspace(4, 34, 151) # Incident energy array (keV); 200 eV spacing
 n_E0 = len(E0_kev)
 
-rhop_ug_cm2 = 0.05 # Minimum detectable mass density (limit of detection/LOD) (ug/cm^2) (use with theoretical calculations only!)
+rhop_ug_cm2 = 0.05 # Minimum detectable areal mass density (limit of detection/LOD) (ug/cm^2)
 
 Z_start = 10 # Neon
 Z_end = 92 # Uranium
 dZ = Z_end - Z_start
 
 Z_idx_array = np.arange(dZ + 1)
-
 n_Z = len(Z_idx_array)
 
-t_be_um = 25 # Beryllium window thickness (microns)
-rho_be_g_cm3 = 1.85 # Volume mass density of beryllium (g/cm^3)
+window_element = 'Be' # Energy-dispersive (EDS) detector window element
+t_window_um = 25 # Detector window thickness (um)
 
-rhop_be_g_cm2 = t_be_um*1e-4*rho_be_g_cm3 # Areal mass density of beryllium (g/cm^2)
+Z_window = xrl.SymbolToAtomicNumber(window_element)
+rho_window_g_cm3 = xrl.ElementDensity(Z_window) # Window element density (g/cm^3)
+
+gas_compund = xrl.NIST_COMPOUND_AIR_DRY_NEAR_SEA_LEVEL # XRL-defined NIST compound (use with nist_compound_chem_form_dens); can use chemical formula for another gas instead
+gas_compound_formula, rho_gas_g_cm3 = nist_compound_chem_form_dens(gas_compund)
+t_gas_cm = 5 # Gas path length (cm)
+
+rhop_window_g_cm2 = 1e-4*rho_window_g_cm3*t_window_um # Areal mass density of window (g/cm^2)
+rhop_gas_g_cm2 = rho_gas_g_cm3*t_gas_cm # Areal mass density of gas (g/cm^2)
 
 omega = 1.35 # Solid angle
 omega_frac = omega/(4*np.pi) # Solid angle fraction relative to a sphere
@@ -523,37 +558,29 @@ fluor_lines = [k_fluor_lines,
                l2_fluor_lines, 
                l3_fluor_lines]
 
-# Cross section inputs [cm^2/g (unless otherwise stated)]
+# Mass XRF production cross sections [cm^2/g (unless otherwise stated)]
 
-# Jump-ratio approximated mass XRF production cross sections
+# Jump-ratio approximated
 
 mass_fluor_pcs_total_jump_ck = np.zeros((n_Z, n_subshells, n_E0))
-mass_fluor_pcs_total_jump_ck_windowless = np.zeros((n_Z, n_subshells, n_E0))
 
-# Excitation-dependent mass XRF production cross sections
+# Excitation-dependent
 
 mass_fluor_pcs_total_no_ck_no_cascade = np.zeros((n_Z, n_subshells, n_E0))
-mass_fluor_pcs_total_no_ck_no_cascade_windowless = np.zeros((n_Z, n_subshells, n_E0))
 mass_fluor_pcs_total_ck_no_cascade = np.zeros((n_Z, n_subshells, n_E0))
-mass_fluor_pcs_total_ck_no_cascade_windowless = np.zeros((n_Z, n_subshells, n_E0))
 mass_fluor_pcs_total_ck_cascade = np.zeros((n_Z, n_subshells, n_E0))
-mass_fluor_pcs_total_ck_cascade_windowless = np.zeros((n_Z, n_subshells, n_E0))
 
 # Minimum number of incident photons per pixel (photons/pixel)
 
 # Jump ratio-approximated
 
 min_required_photons_total_jump_ck = np.zeros((n_Z, n_E0))
-min_required_photons_total_jump_ck_windowless = np.zeros((n_Z, n_E0))
 
 # Excitation-dependent PCSes considered
 
 min_required_photons_total_pcs_no_ck_no_cascade = np.zeros((n_Z, n_E0))
-min_required_photons_total_pcs_no_ck_no_cascade_windowless = np.zeros((n_Z, n_E0))
 min_required_photons_total_pcs_ck_no_cascade = np.zeros((n_Z, n_E0))
-min_required_photons_total_pcs_ck_no_cascade_windowless = np.zeros((n_Z, n_E0))
 min_required_photons_total_pcs_ck_cascade = np.zeros((n_Z, n_E0))
-min_required_photons_total_pcs_ck_cascade_windowless = np.zeros((n_Z, n_E0))
 
 # Model protein elements
 
@@ -570,26 +597,20 @@ A_beam = np.pi*(r_beam_um**2)/np.cos(np.deg2rad(theta)) # Beam spot (assumed to 
 # Jump ratio-approximated
 
 dose_jump_ck = np.zeros((n_Z, n_subshells, n_E0))
-dose_jump_ck_windowless = np.zeros((n_Z, n_subshells, n_E0))
 dose_jump_ck_total = np.zeros((n_Z, n_E0))
-dose_jump_ck_total_windowless = np.zeros((n_Z, n_E0))
 
 # Excitation-dependent PCS consideration
 
 dose_pcs_no_ck_no_cascade = np.zeros((n_Z, n_subshells, n_E0))
-dose_pcs_no_ck_no_cascade_windowless = np.zeros((n_Z, n_subshells, n_E0))
 dose_pcs_ck_no_cascade = np.zeros((n_Z, n_subshells, n_E0))
-dose_pcs_ck_no_cascade_windowless = np.zeros((n_Z, n_subshells, n_E0))
 dose_pcs_ck_cascade = np.zeros((n_Z, n_subshells, n_E0))
-dose_pcs_ck_cascade_windowless = np.zeros((n_Z, n_subshells, n_E0))
 dose_pcs_no_ck_no_cascade_total = np.zeros((n_Z, n_E0))
-dose_pcs_no_ck_no_cascade_total_windowless = np.zeros((n_Z, n_E0))
 dose_pcs_ck_no_cascade_total = np.zeros((n_Z, n_E0))
-dose_pcs_ck_no_cascade_total_windowless = np.zeros((n_Z, n_E0))
 dose_pcs_ck_cascade_total = np.zeros((n_Z, n_E0))
-dose_pcs_ck_cascade_total_windowless = np.zeros((n_Z, n_E0))
 
-A_protein = 0 # Total protein molar mass
+###################################################################
+
+# Calculate total mass XRF production cross sections
 
 for Z in Z_idx_array:
     for n in range(n_subshells):
@@ -600,135 +621,142 @@ for Z in Z_idx_array:
             fluor_yield = 0
 
         for E in range(n_E0):
-            mass_fluor_pcs_total_jump_ck_windowless[Z, n, E] = mass_photo_pcs_jump_with_ck_no_ck_constraints(Z + Z_start, subshells[n], E0_kev[E])*fluor_yield
+            mass_fluor_jump_ck_aux = mass_photo_pcs_jump_with_ck_no_ck_constraints(Z + Z_start, subshells[n], E0_kev[E])*fluor_yield
             
             try:
-                mass_fluor_pcs_total_no_ck_no_cascade_windowless[Z, n, E] = xrl.CS_Photo_Partial(Z + Z_start, subshells[n], E0_kev[E])*fluor_yield
+                mass_fluor_pcs_total_no_ck_no_cascade_aux = xrl.CS_Photo_Partial(Z + Z_start, subshells[n], E0_kev[E])*fluor_yield
 
             except:
-                mass_fluor_pcs_total_no_ck_no_cascade_windowless[Z, n, E] = 0
+                mass_fluor_pcs_total_no_ck_no_cascade_aux = 0
             
-            try:
-                mass_fluor_pcs_total_ck_no_cascade_windowless[Z, n, E] = xrl.CS_FluorShell_Kissel_no_Cascade(Z + Z_start, subshells[n], E0_kev[E])
-                
-            except:
-                mass_fluor_pcs_total_ck_no_cascade_windowless[Z, n, E] = 0
-            
-            try:
-                mass_fluor_pcs_total_ck_cascade_windowless[Z, n, E] = xrl.CS_FluorShell_Kissel_Cascade(Z + Z_start, subshells[n], E0_kev[E])
-            
-            except:
-                mass_fluor_pcs_total_ck_cascade_windowless[Z, n, E] = 0
-                
-            for line in fluor_lines[n]:
-                try: # XRF line energy
-                    fluor_energy = xrl.LineEnergy(Z + Z_start, line)
+            if t_window_um == 0 and t_gas_cm == 0:
+                mass_fluor_pcs_total_jump_ck[Z, n, E] = mass_fluor_jump_ck_aux
+                mass_fluor_pcs_total_no_ck_no_cascade[Z, n, E] = mass_fluor_pcs_total_no_ck_no_cascade_aux
+
+                try:
+                    mass_fluor_pcs_total_ck_no_cascade[Z, n, E] = xrl.CS_FluorShell_Kissel_no_Cascade(Z + Z_start, subshells[n], E0_kev[E])
                 
                 except:
-                    fluor_energy = 0
-                
-                if fluor_energy > 0:
-                    try:
-                        mass_photo_cs_total_be = xrl.CS_Photo_Total(4, fluor_energy)
-                    
-                    except:
-                        mass_photo_cs_total_be = 0
-                    
-                    try:
-                        mass_photo_cs_total_be_jump = xrl.CS_Photo(4, fluor_energy)
-                    
-                    except:
-                        mass_photo_cs_total_be_jump = 0
+                    mass_fluor_pcs_total_ck_no_cascade[Z, n, E] = 0
+            
+                try:
+                    mass_fluor_pcs_total_ck_cascade[Z, n, E] = xrl.CS_FluorShell_Kissel_Cascade(Z + Z_start, subshells[n], E0_kev[E])
+            
+                except:
+                    mass_fluor_pcs_total_ck_cascade[Z, n, E] = 0
 
-                    if mass_photo_cs_total_be > 0:
+            else:
+                for line in fluor_lines[n]:
+                    try: # XRF line energy
+                        fluor_energy = xrl.LineEnergy(Z + Z_start, line)
+                
+                    except:
+                        fluor_energy = 0
+                
+                    if fluor_energy > 0:
                         try:
-                            frac_emission = xrl.RadRate(Z + Z_start, line)
-
-                            mass_fluor_pcs_total_no_ck_no_cascade[Z, n, E] += mass_fluor_pcs_total_no_ck_no_cascade_windowless[Z, n, E]*frac_emission*np.exp(-mass_photo_cs_total_be*rhop_be_g_cm2)
-                
+                            mass_photo_cs_total_window = xrl.CS_Photo_Total(Z_window, fluor_energy)
+                    
                         except:
-                            pass
-                
+                            mass_photo_cs_total_window = 0
+                    
                         try:
-                            mass_fluor_pcs_ck_no_cascade = xrl.CS_FluorLine_Kissel_no_Cascade(Z + Z_start, line, E0_kev[E])
+                            mass_photo_cs_total_window_jump = xrl.CS_Photo(Z_window, fluor_energy)
+                    
+                        except:
+                            mass_photo_cs_total_window_jump = 0
+
+                        try:
+                            mass_photo_cs_total_gas = xrl.CS_Photo_Total_CP(gas_compound_formula, fluor_energy)
+                    
+                        except:
+                            mass_photo_cs_total_gas = 0
+                    
+                        try:
+                            mass_photo_cs_total_window_jump = xrl.CS_Photo(Z_window, fluor_energy)
+                    
+                        except:
+                            mass_photo_cs_total_window_jump = 0
+                    
+                        try:
+                            mass_photo_cs_total_gas_jump = xrl.CS_Photo_CP(gas_compound_formula, fluor_energy)
+                    
+                        except:
+                            mass_photo_cs_total_gas_jump = 0
+
+                        if mass_photo_cs_total_window > 0 or mass_photo_cs_total_gas > 0:
+                            try:
+                                frac_emission = xrl.RadRate(Z + Z_start, line)
+
+                                mass_fluor_pcs_total_no_ck_no_cascade[Z, n, E] += mass_fluor_pcs_total_no_ck_no_cascade_aux*frac_emission*np.exp(-mass_photo_cs_total_window*rhop_window_g_cm2 - mass_photo_cs_total_gas*rhop_gas_g_cm2)
+                
+                            except:
+                                pass
+                
+                            try:
+                                mass_fluor_pcs_ck_no_cascade = xrl.CS_FluorLine_Kissel_no_Cascade(Z + Z_start, line, E0_kev[E])
                             
-                            mass_fluor_pcs_total_ck_no_cascade[Z, n, E] += mass_fluor_pcs_ck_no_cascade*np.exp(-mass_photo_cs_total_be*rhop_be_g_cm2)
+                                mass_fluor_pcs_total_ck_no_cascade[Z, n, E] += mass_fluor_pcs_ck_no_cascade*np.exp(-mass_photo_cs_total_window*rhop_window_g_cm2 - mass_photo_cs_total_gas*rhop_gas_g_cm2)
                 
-                        except:
-                            pass
+                            except:
+                                pass
                 
-                        try: 
-                            mass_fluor_pcs_ck_cascade = xrl.CS_FluorLine_Kissel_Cascade(Z + Z_start, line, E0_kev[E])
+                            try: 
+                                mass_fluor_pcs_ck_cascade = xrl.CS_FluorLine_Kissel_Cascade(Z + Z_start, line, E0_kev[E])
 
-                            mass_fluor_pcs_total_ck_cascade[Z, n, E] += mass_fluor_pcs_ck_cascade*np.exp(-mass_photo_cs_total_be*rhop_be_g_cm2)
+                                mass_fluor_pcs_total_ck_cascade[Z, n, E] += mass_fluor_pcs_ck_cascade*np.exp(-mass_photo_cs_total_window*rhop_window_g_cm2 - mass_photo_cs_total_gas*rhop_gas_g_cm2)
                 
-                        except:
-                            pass
+                            except:
+                                pass
                     
-                    if mass_photo_cs_total_be_jump > 0:
-                        try:
-                            frac_emission = xrl.RadRate(Z + Z_start, line)
+                        if mass_photo_cs_total_window_jump > 0 or mass_photo_cs_total_gas_jump > 0:
+                            try:
+                                frac_emission = xrl.RadRate(Z + Z_start, line)
 
-                            mass_fluor_pcs_total_jump_ck[Z, n, E] += mass_fluor_pcs_total_jump_ck_windowless[Z, n, E]*frac_emission*np.exp(-mass_photo_cs_total_be_jump*rhop_be_g_cm2)
+                                mass_fluor_pcs_total_jump_ck[Z, n, E] += mass_fluor_jump_ck_aux*frac_emission*np.exp(-mass_photo_cs_total_window_jump*rhop_window_g_cm2 - mass_photo_cs_total_gas_jump*rhop_gas_g_cm2)
 
-                        except:
-                            continue
+                            except:
+                                continue
+
+# Calculate normalized intensities
 
 normalized_intensity_jump_ck = omega_frac*mass_fluor_pcs_total_jump_ck*rhop_ug_cm2*1e-6
-normalized_intensity_jump_ck_windowless = omega_frac*mass_fluor_pcs_total_jump_ck_windowless*rhop_ug_cm2*1e-6
 normalized_intensity_pcs_no_ck_no_cascade = omega_frac*mass_fluor_pcs_total_no_ck_no_cascade*rhop_ug_cm2*1e-6
-normalized_intensity_pcs_no_ck_no_cascade_windowless = omega_frac*mass_fluor_pcs_total_no_ck_no_cascade_windowless*rhop_ug_cm2*1e-6
 normalized_intensity_pcs_ck_no_cascade = omega_frac*mass_fluor_pcs_total_ck_no_cascade*rhop_ug_cm2*1e-6
-normalized_intensity_pcs_ck_no_cascade_windowless = omega_frac*mass_fluor_pcs_total_ck_no_cascade_windowless*rhop_ug_cm2*1e-6
 normalized_intensity_pcs_ck_cascade = omega_frac*mass_fluor_pcs_total_ck_cascade*rhop_ug_cm2*1e-6
-normalized_intensity_pcs_ck_cascade_windowless = omega_frac*mass_fluor_pcs_total_ck_cascade_windowless*rhop_ug_cm2*1e-6
 
 normalized_intensity_total_jump_ck = np.sum(normalized_intensity_jump_ck, axis = 1)
-normalized_intensity_total_jump_ck_windowless = np.sum(normalized_intensity_jump_ck_windowless, axis = 1)
 normalized_intensity_total_pcs_no_ck_no_cascade = np.sum(normalized_intensity_pcs_no_ck_no_cascade, axis = 1)
-normalized_intensity_total_pcs_no_ck_no_cascade_windowless = np.sum(normalized_intensity_pcs_no_ck_no_cascade_windowless, axis = 1)
 normalized_intensity_total_pcs_ck_no_cascade = np.sum(normalized_intensity_pcs_ck_no_cascade, axis = 1)
-normalized_intensity_total_pcs_ck_no_cascade_windowless = np.sum(normalized_intensity_pcs_ck_no_cascade_windowless, axis = 1)
 normalized_intensity_total_pcs_ck_cascade = np.sum(normalized_intensity_pcs_ck_cascade, axis = 1)
-normalized_intensity_total_pcs_ck_cascade_windowless = np.sum(normalized_intensity_pcs_ck_cascade_windowless, axis = 1)
+
+# Calculate minimum required number of incident photons per pixel
 
 min_required_photons_total_jump_ck = N_fluor/normalized_intensity_total_jump_ck
-min_required_photons_total_jump_ck_windowless = N_fluor/normalized_intensity_total_jump_ck_windowless
 min_required_photons_total_pcs_no_ck_no_cascade = N_fluor/normalized_intensity_total_pcs_no_ck_no_cascade
-min_required_photons_total_pcs_no_ck_no_cascade_windowless = N_fluor/normalized_intensity_total_pcs_no_ck_no_cascade_windowless
 min_required_photons_total_pcs_ck_no_cascade = N_fluor/normalized_intensity_total_pcs_ck_no_cascade
-min_required_photons_total_pcs_ck_no_cascade_windowless = N_fluor/normalized_intensity_total_pcs_ck_no_cascade_windowless
-min_required_photons_total_pcs_ck_cascade = N_fluor/normalized_intensity_total_pcs_ck_cascade
-min_required_photons_total_pcs_ck_cascade_windowless = N_fluor/normalized_intensity_total_pcs_ck_cascade_windowless     
+min_required_photons_total_pcs_ck_cascade = N_fluor/normalized_intensity_total_pcs_ck_cascade 
 
 min_required_photons_jump_ck = N_fluor/normalized_intensity_jump_ck
-min_required_photons_jump_ck_windowless = N_fluor/normalized_intensity_jump_ck_windowless
 min_required_photons_pcs_no_ck_no_cascade = N_fluor/normalized_intensity_pcs_no_ck_no_cascade
-min_required_photons_pcs_no_ck_no_cascade_windowless = N_fluor/normalized_intensity_pcs_no_ck_no_cascade_windowless
 min_required_photons_pcs_ck_no_cascade = N_fluor/normalized_intensity_pcs_ck_no_cascade
-min_required_photons_pcs_ck_no_cascade_windowless = N_fluor/normalized_intensity_pcs_ck_no_cascade_windowless
 min_required_photons_pcs_ck_cascade = N_fluor/normalized_intensity_pcs_ck_cascade
-min_required_photons_pcs_ck_cascade_windowless = N_fluor/normalized_intensity_pcs_ck_cascade_windowless
+
+# Calculate minimum required fluence (photons/um^2)
 
 fluence_jump_ck_photons_um2 = min_required_photons_jump_ck/A_beam
-fluence_jump_ck_photons_um2_windowless = min_required_photons_jump_ck_windowless/A_beam
 fluence_pcs_no_ck_no_cascade_photons_um2 = min_required_photons_pcs_no_ck_no_cascade/A_beam
-fluence_pcs_no_ck_no_cascade_photons_um2_windowless = min_required_photons_pcs_no_ck_no_cascade_windowless/A_beam
 fluence_pcs_ck_no_cascade_photons_um2 = min_required_photons_pcs_ck_no_cascade/A_beam
-fluence_pcs_ck_no_cascade_photons_um2_windowless = min_required_photons_pcs_ck_no_cascade_windowless/A_beam
 fluence_pcs_ck_cascade_photons_um2 = min_required_photons_pcs_ck_cascade/A_beam
-fluence_pcs_ck_cascade_photons_um2_windowless = min_required_photons_pcs_ck_cascade_windowless/A_beam
 
 fluence_jump_ck_photons_um2_total = min_required_photons_total_jump_ck/A_beam
-fluence_jump_ck_photons_um2_total_windowless = min_required_photons_total_jump_ck_windowless/A_beam
 fluence_pcs_no_ck_no_cascade_photons_um2_total = min_required_photons_total_pcs_no_ck_no_cascade/A_beam
-fluence_pcs_no_ck_no_cascade_photons_um2_total_windowless = min_required_photons_total_pcs_no_ck_no_cascade_windowless/A_beam
 fluence_pcs_ck_no_cascade_photons_um2_total = min_required_photons_total_pcs_ck_no_cascade/A_beam
-fluence_pcs_ck_no_cascade_photons_um2_total_windowless = min_required_photons_total_pcs_ck_no_cascade_windowless/A_beam
 fluence_pcs_ck_cascade_photons_um2_total = min_required_photons_total_pcs_ck_cascade/A_beam
-fluence_pcs_ck_cascade_photons_um2_total_windowless = min_required_photons_total_pcs_ck_cascade_windowless/A_beam
 
 for E in range(n_E0):
+    # Calculate protein total mass photoionization cross section
+
     try:
         mass_photo_cs_total_protein_pcs = xrl.CS_Photo_Total_CP(protein_matrix, E0_kev[E])
         
@@ -740,21 +768,15 @@ for E in range(n_E0):
         
     except:
         continue
-        
+    
+    # Calculate minimum required dose (Gy)
+
     dose_jump_ck[:, :, E] = 1e14*fluence_jump_ck_photons_um2[:, :, E]*mass_photo_cs_total_protein_jump*E0_kev[E]*cnsts.e
-    dose_jump_ck_windowless[:, :, E] = 1e14*fluence_jump_ck_photons_um2_windowless[:, :, E]*mass_photo_cs_total_protein_jump*E0_kev[E]*cnsts.e
     dose_pcs_no_ck_no_cascade[:, :, E] = 1e14*fluence_pcs_no_ck_no_cascade_photons_um2[:, :, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
-    dose_pcs_no_ck_no_cascade_windowless[:, :, E] = 1e14*fluence_pcs_no_ck_no_cascade_photons_um2_windowless[:, :, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
     dose_pcs_ck_no_cascade[:, :, E] = 1e14*fluence_pcs_ck_no_cascade_photons_um2[:, :, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
-    dose_pcs_ck_no_cascade_windowless[:, :, E] = 1e14*fluence_pcs_ck_no_cascade_photons_um2_windowless[:, :, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
     dose_pcs_ck_cascade[:, :, E] = 1e14*fluence_pcs_ck_cascade_photons_um2[:, :, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
-    dose_pcs_ck_cascade_windowless[:, :, E] = 1e14*fluence_pcs_ck_cascade_photons_um2_windowless[:, :, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
 
     dose_jump_ck_total[:, E] = 1e14*fluence_jump_ck_photons_um2_total[:, E]*mass_photo_cs_total_protein_jump*E0_kev[E]*cnsts.e
-    dose_jump_ck_total_windowless[:, E] = 1e14*fluence_jump_ck_photons_um2_total_windowless[:, E]*mass_photo_cs_total_protein_jump*E0_kev[E]*cnsts.e
     dose_pcs_no_ck_no_cascade_total[:, E] = 1e14*fluence_pcs_no_ck_no_cascade_photons_um2_total[:, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
-    dose_pcs_no_ck_no_cascade_total_windowless[:, E] = 1e14*fluence_pcs_no_ck_no_cascade_photons_um2_total_windowless[:, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
     dose_pcs_ck_no_cascade_total[:, E] = 1e14*fluence_pcs_ck_no_cascade_photons_um2_total[:, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
-    dose_pcs_ck_no_cascade_total_windowless[:, E] = 1e14*fluence_pcs_ck_no_cascade_photons_um2_total_windowless[:, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
     dose_pcs_ck_cascade_total[:, E] = 1e14*fluence_pcs_ck_cascade_photons_um2_total[:, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
-    dose_pcs_ck_cascade_total_windowless[:, E] = 1e14*fluence_pcs_ck_cascade_photons_um2_total_windowless[:, E]*mass_photo_cs_total_protein_pcs*E0_kev[E]*cnsts.e
