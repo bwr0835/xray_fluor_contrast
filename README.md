@@ -2,7 +2,9 @@
 
 Calculations of minimum number of incident photons $\bar{N}_ \mathrm{inc}$ and radiation skin dose $D_ {\mathrm{skin}}$ required to detect $\bar{N}_ {\mathrm{fluor}}$ x-ray fluorescence photons at a minimum limit of detection $\rho_ {\min}'$.
 
-**How to cite:** B. Roter, A. M. Crawford, T. V. O'Halloran, _et al_., "X-ray fluorescence microscopy exposure estimates using a single excitation energy", INSERT ADDITIONAL STUFF HERE
+**How to cite:** B. Roter, A. M. Crawford, T. V. O'Halloran, _et al_., "X-ray fluorescence microscopy exposure estimates using a single excitation energy", bioRxiv, 10.64898/2026.01.15.699668 (2026).
+
+**NOTE:** Citation will be updated upon journal acceptance.
 
 # References
 
