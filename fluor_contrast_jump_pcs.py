@@ -48,7 +48,13 @@ import numpy as np, xraylib as xrl, scipy.constants as cnsts
 
 from matplotlib import pyplot as plt
 
-def nist_compound_chem_form_dens(compound): # Get chemical formula, density info from XRL-defined NIST compounds
+def nist_compound_chem_form_dens(compound): 
+    '''
+    Get chemical formula, density info from XRL-defined NIST compounds
+
+    NOTE: This function is valid for air only due to the diatomic elements in it!
+    '''
+                                            
     diatomic_elements = ['H', 'N', 'O', 'F', 'Cl', 'Br', 'I']
     
     compound_info = xrl.GetCompoundDataNISTByIndex(compound)
